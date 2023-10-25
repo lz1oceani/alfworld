@@ -129,7 +129,7 @@ dmypy.json
 
 # TW-Alfred
 data/json_2.1.1*
-*.py
+#*.py
 *.ipynb
 .history
 .vscode
