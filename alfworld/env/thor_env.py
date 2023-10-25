@@ -30,9 +30,12 @@ class ThorEnv(Controller):
                  build_path=constants.BUILD_PATH,
                  save_frames_to_disk=False,
                  save_frames_path="./",
-                 smooth_nav=False):
+                 smooth_nav=False,
+                 headless=False):
+        
+        # env.step(dict(action='Initialize', gridSize=0.5, fieldOfView='110', visibilityDistance='4'))
 
-        super().__init__(quality=quality)
+        super().__init__(quality=quality, headless=headless)
         self.local_executable_path = build_path
         self.start(x_display=x_display,
                    player_screen_height=player_screen_height,
@@ -80,6 +83,7 @@ class ThorEnv(Controller):
             renderObjectImage=render_object_image,
             visibility_distance=visibility_distance,
             makeAgentsVisible=False,
+            fieldOfView="110",
         ))
 
         # reset task if specified

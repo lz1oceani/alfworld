@@ -32,12 +32,13 @@ class AlfredThorEnv(object):
     '''
 
     class Thor(threading.Thread):
-        def __init__(self, queue, train_eval="train"):
+        def __init__(self, queue, train_eval="train", headless=False):
             Thread.__init__(self)
             self.action_queue = queue
             self.mask_rcnn = None
             self.env =  None
             self.train_eval = train_eval
+            self.headless = headless
             self.controller_type = "oracle"
 
         def run(self):
@@ -63,7 +64,8 @@ class AlfredThorEnv(object):
                 self.env = ThorEnv(player_screen_height=screen_height,
                                    player_screen_width=screen_width,
                                    smooth_nav=smooth_nav,
-                                   save_frames_to_disk=save_frames_to_disk)
+                                   save_frames_to_disk=save_frames_to_disk,
+                                   headless=self.headless)
             self.controller_type = self.config['controller']['type']
             self._done = False
             self._res = ()
@@ -165,6 +167,9 @@ class AlfredThorEnv(object):
                 if self.env.save_frames_to_disk:
                     self.record_action(action)
             self.steps += 1
+            
+        def get_image(self):
+            return self.env.last_event.frame
 
         def get_results(self):
             return self._res
@@ -219,10 +224,11 @@ class AlfredThorEnv(object):
         def get_exploration_frames(self):
             return self.controller.get_exploration_frames()
 
-    def __init__(self, config, train_eval="train"):
+    def __init__(self, config, train_eval="train", headless=False):
         print("Initialize AlfredThorEnv...")
         self.config = config
         self.train_eval = train_eval
+        self.headless = headless
         self.random_seed = 123
         self.batch_size = 1
         self.envs = []
@@ -254,7 +260,6 @@ class AlfredThorEnv(object):
         for tt_id in self.config['env']['task_types']:
             if tt_id in TASK_TYPES:
                 task_types.append(TASK_TYPES[tt_id])
-
         for root, dirs, files in os.walk(data_path, topdown=False):
             if 'traj_data.json' in files:
                 # Skip movable and slice objects object tasks
@@ -304,7 +309,7 @@ class AlfredThorEnv(object):
         self.task_order = [""] * self.batch_size
         for n in range(self.batch_size):
             queue = Queue()
-            env = self.Thor(queue, self.train_eval)
+            env = self.Thor(queue, self.train_eval, self.headless)
             self.action_queues.append(queue)
             self.envs.append(env)
             env.daemon = True
@@ -312,32 +317,42 @@ class AlfredThorEnv(object):
             env.init_env(self.config)
         return self
 
-    def reset(self):
+    def reset(self, tasks=None):
         # set tasks
         batch_size = self.batch_size
         # reset envs
 
-        if self.train_eval == 'train':
-            tasks = random.sample(self.json_file_list, k=batch_size)
+        if tasks is not None:
+            if isinstance(tasks, str):
+                tasks = [tasks]
         else:
-            if len(self.json_file_list)-batch_size > batch_size:
-                tasks = [self.json_file_list.pop(random.randrange(len(self.json_file_list))) for _ in range(batch_size)]
-            else:
+            if self.train_eval == 'train':
                 tasks = random.sample(self.json_file_list, k=batch_size)
-                self.get_env_paths()
+            else:
+                if len(self.json_file_list)-batch_size > batch_size:
+                    tasks = [self.json_file_list.pop(random.randrange(len(self.json_file_list))) for _ in range(batch_size)]
+                else:
+                    tasks = random.sample(self.json_file_list, k=batch_size)
+                    self.get_env_paths()
+        assert len(tasks) == batch_size
 
         for n in range(batch_size):
             self.action_queues[n].put((None, True, tasks[n]))
 
         obs, dones, infos = self.wait_and_get_info()
         return obs, infos
+    
+    def get_image(self):
+        return [env.get_image() for env in self.envs]
 
     def step(self, actions):
         '''
         executes actions in parallel and waits for all env to finish
         '''
-
+        if isinstance(actions, str):
+            actions = [actions]
         batch_size = self.batch_size
+        assert len(actions) == batch_size
         for n in range(batch_size):
             self.action_queues[n].put((actions[n], False, ""))
 

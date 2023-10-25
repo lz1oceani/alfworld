@@ -177,6 +177,7 @@ class AlfredTWEnv(object):
             num_eval_games = self.config['dataset']['num_eval_games'] if self.config['dataset']['num_eval_games'] > 0 else len(self.game_files)
             self.game_files = self.game_files[:num_eval_games]
             self.num_games = len(self.game_files)
+            self.json_file_list = self.num_games
             print("Evaluating with %d games" % (len(self.game_files)))
 
     def get_game_logic(self):
