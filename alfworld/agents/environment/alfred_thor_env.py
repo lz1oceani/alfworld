@@ -11,35 +11,47 @@ import sys
 import random
 
 import alfworld.agents
-from alfworld.agents.utils.misc import Demangler, get_templated_task_desc, add_task_to_grammar
+from alfworld.agents.utils.misc import (
+    Demangler,
+    get_templated_task_desc,
+    add_task_to_grammar,
+)
 from alfworld.env.thor_env import ThorEnv
 from alfworld.agents.expert import HandCodedThorAgent, HandCodedAgentTimeout
 from alfworld.agents.detector.mrcnn import load_pretrained_model
-from alfworld.agents.controller import OracleAgent, OracleAStarAgent, MaskRCNNAgent, MaskRCNNAStarAgent
+from alfworld.agents.controller import (
+    OracleAgent,
+    OracleAStarAgent,
+    MaskRCNNAgent,
+    MaskRCNNAStarAgent,
+)
 
 
-TASK_TYPES = {1: "pick_and_place_simple",
-              2: "look_at_obj_in_light",
-              3: "pick_clean_then_place_in_recep",
-              4: "pick_heat_then_place_in_recep",
-              5: "pick_cool_then_place_in_recep",
-              6: "pick_two_obj_and_place"}
+TASK_TYPES = {
+    1: "pick_and_place_simple",
+    2: "look_at_obj_in_light",
+    3: "pick_clean_then_place_in_recep",
+    4: "pick_heat_then_place_in_recep",
+    5: "pick_cool_then_place_in_recep",
+    6: "pick_two_obj_and_place",
+}
 
 
 class AlfredThorEnv(object):
-    '''
+    """
     Interface for Embodied (THOR) environment
-    '''
+    """
 
     class Thor(threading.Thread):
         def __init__(self, queue, train_eval="train", headless=False):
             Thread.__init__(self)
             self.action_queue = queue
             self.mask_rcnn = None
-            self.env =  None
+            self.env = None
             self.train_eval = train_eval
             self.headless = headless
             self.controller_type = "oracle"
+            self.is_first_get_rotation = True
 
         def run(self):
             while True:
@@ -55,35 +67,95 @@ class AlfredThorEnv(object):
         def init_env(self, config):
             self.config = config
 
-            screen_height = config['env']['thor']['screen_height']
-            screen_width = config['env']['thor']['screen_width']
-            smooth_nav = config['env']['thor']['smooth_nav']
-            save_frames_to_disk = config['env']['thor']['save_frames_to_disk']
+            screen_height = config["env"]["thor"]["screen_height"]
+            screen_width = config["env"]["thor"]["screen_width"]
+            smooth_nav = config["env"]["thor"]["smooth_nav"]
+            save_frames_to_disk = config["env"]["thor"]["save_frames_to_disk"]
 
             if not self.env:
-                self.env = ThorEnv(player_screen_height=screen_height,
-                                   player_screen_width=screen_width,
-                                   smooth_nav=smooth_nav,
-                                   save_frames_to_disk=save_frames_to_disk,
-                                   headless=self.headless)
-            self.controller_type = self.config['controller']['type']
+                self.env = ThorEnv(
+                    player_screen_height=screen_height,
+                    player_screen_width=screen_width,
+                    smooth_nav=smooth_nav,
+                    save_frames_to_disk=save_frames_to_disk,
+                    headless=self.headless,
+                )
+            self.controller_type = self.config["controller"]["type"]
             self._done = False
             self._res = ()
             self._feedback = ""
             self.expert = HandCodedThorAgent(self.env, max_steps=200)
             self.prev_command = ""
             self.load_mask_rcnn()
+        
 
+        def step_rotate(self, action_degree):
+            
+            def normalize_degree(rotation):
+                return rotation % 360
+
+            if self.is_first_get_rotation:
+                # Current agent position and rotation
+                self.original_position = self.env.last_event.metadata["agent"]["position"]
+                self.original_rotation = self.env.last_event.metadata["agent"]["rotation"]["y"]
+                self.original_horizon = self.env.last_event.metadata["agent"]["cameraHorizon"]
+                self.is_first_get_rotation = False
+                
+            action_type, rotation, horizon = action_degree.split("_")
+            # print(f'Action: {action}, Degree: {degree}')
+            if '-' in rotation:
+                rotation = -float(rotation[1:])
+            else:
+                rotation = float(rotation)
+                
+            if '-' in horizon:
+                horizon = -float(horizon[1:])
+            else:
+                horizon = float(horizon)
+            # print(f'degree: {degree}')
+            # Current agent position and rotation
+            new_rotation = normalize_degree(self.original_rotation + rotation)
+            new_horizon = normalize_degree(self.original_horizon + horizon)
+            action = dict(
+                action=action_type,  # Action to teleport (change position and rotation)
+                x=self.original_position["x"],
+                y=self.original_position["y"],
+                z=self.original_position["z"],
+                rotation=new_rotation,
+                horizon=new_horizon
+            )
+                
+            self.env.step(action)
+
+        def step_to_original_rotation(self):
+            action = dict(
+                action="TeleportFull",  # Action to teleport (change position and rotation)
+                x=self.original_position["x"],
+                y=self.original_position["y"],
+                z=self.original_position["z"],
+                rotation=self.original_rotation,
+                horizon=self.original_horizon
+            )
+            self.is_first_get_rotation = True
+            self.env.step(action)
+
+        def set_visibility(self, setting):
+            obs = self.env.step(setting)
+            return obs
+            
         def load_mask_rcnn(self):
             # load pretrained MaskRCNN model if required
-            if 'mrcnn' in self.config['controller']['type'] and not self.mask_rcnn:
-                model_path = os.path.expandvars(self.config['mask_rcnn']['pretrained_model_path'])
+            if "mrcnn" in self.config["controller"]["type"] and not self.mask_rcnn:
+                model_path = os.path.expandvars(
+                    self.config["mask_rcnn"]["pretrained_model_path"]
+                )
                 self.mask_rcnn = load_pretrained_model(model_path)
 
         def set_task(self, task_file):
+            # print("Task: %s" % task_file)
             self.task_file = task_file
             self.traj_root = os.path.dirname(task_file)
-            with open(task_file, 'r') as f:
+            with open(task_file, "r") as f:
                 self.traj_data = json.load(f)
 
         def reset(self, task_file):
@@ -93,55 +165,87 @@ class AlfredThorEnv(object):
             self.set_task(task_file)
 
             # scene setup
-            scene_num = self.traj_data['scene']['scene_num']
-            object_poses = self.traj_data['scene']['object_poses']
-            dirty_and_empty = self.traj_data['scene']['dirty_and_empty']
-            object_toggles = self.traj_data['scene']['object_toggles']
-            scene_name = 'FloorPlan%d' % scene_num
+            scene_num = self.traj_data["scene"]["scene_num"]
+            object_poses = self.traj_data["scene"]["object_poses"]
+            dirty_and_empty = self.traj_data["scene"]["dirty_and_empty"]
+            object_toggles = self.traj_data["scene"]["object_toggles"]
+            scene_name = "FloorPlan%d" % scene_num
             self.env.reset(scene_name)
             self.env.restore_scene(object_poses, object_toggles, dirty_and_empty)
 
             # recording
-            save_frames_path = self.config['env']['thor']['save_frames_path']
-            self.env.save_frames_path = os.path.join(save_frames_path, self.traj_root.replace('../', ''))
+            save_frames_path = self.config["env"]["thor"]["save_frames_path"]
+            self.env.save_frames_path = os.path.join(
+                save_frames_path, self.traj_root.replace("../", "")
+            )
 
             # initialize to start position
-            self.env.step(dict(self.traj_data['scene']['init_action']))            # print goal instr
+            self.env.step(
+                dict(self.traj_data["scene"]["init_action"])
+            )  # print goal instr
             task_desc = get_templated_task_desc(self.traj_data)
             print("Task: %s" % task_desc)
             # print("Task: %s" % (self.traj_data['turk_annotations']['anns'][0]['task_desc']))
 
             # setup task for reward
-            class args: pass
-            args.reward_config = os.path.join(alfworld.agents.__path__[0], 'config/rewards.json')
-            self.env.set_task(self.traj_data, args, reward_type='dense')
+            class args:
+                pass
+
+            args.reward_config = os.path.join(
+                alfworld.agents.__path__[0], "config/rewards.json"
+            )
+            self.env.set_task(self.traj_data, args, reward_type="dense")
 
             # set controller
-            self.controller_type = self.config['controller']['type']
-            self.goal_desc_human_anns_prob = self.config['env']['goal_desc_human_anns_prob']
-            load_receps = self.config['controller']['load_receps']
-            debug = self.config['controller']['debug']
+            self.controller_type = self.config["controller"]["type"]
+            self.goal_desc_human_anns_prob = self.config["env"][
+                "goal_desc_human_anns_prob"
+            ]
+            load_receps = self.config["controller"]["load_receps"]
+            debug = self.config["controller"]["debug"]
 
-            if self.controller_type == 'oracle':
-                self.controller = OracleAgent(self.env, self.traj_data, self.traj_root,
-                                              load_receps=load_receps, debug=debug,
-                                              goal_desc_human_anns_prob=self.goal_desc_human_anns_prob)
-            elif self.controller_type == 'oracle_astar':
-                self.controller = OracleAStarAgent(self.env, self.traj_data, self.traj_root,
-                                                   load_receps=load_receps, debug=debug,
-                                                   goal_desc_human_anns_prob=self.goal_desc_human_anns_prob)
-            elif self.controller_type == 'mrcnn':
-                self.controller = MaskRCNNAgent(self.env, self.traj_data, self.traj_root,
-                                                pretrained_model=self.mask_rcnn,
-                                                load_receps=load_receps, debug=debug,
-                                                goal_desc_human_anns_prob=self.goal_desc_human_anns_prob,
-                                                save_detections_to_disk=self.env.save_frames_to_disk, save_detections_path=self.env.save_frames_path)
-            elif self.controller_type == 'mrcnn_astar':
-                self.controller = MaskRCNNAStarAgent(self.env, self.traj_data, self.traj_root,
-                                                     pretrained_model=self.mask_rcnn,
-                                                     load_receps=load_receps, debug=debug,
-                                                     goal_desc_human_anns_prob=self.goal_desc_human_anns_prob,
-                                                     save_detections_to_disk=self.env.save_frames_to_disk, save_detections_path=self.env.save_frames_path)
+            if self.controller_type == "oracle":
+                self.controller = OracleAgent(
+                    self.env,
+                    self.traj_data,
+                    self.traj_root,
+                    load_receps=load_receps,
+                    debug=debug,
+                    goal_desc_human_anns_prob=self.goal_desc_human_anns_prob,
+                )
+            elif self.controller_type == "oracle_astar":
+                self.controller = OracleAStarAgent(
+                    self.env,
+                    self.traj_data,
+                    self.traj_root,
+                    load_receps=load_receps,
+                    debug=debug,
+                    goal_desc_human_anns_prob=self.goal_desc_human_anns_prob,
+                )
+            elif self.controller_type == "mrcnn":
+                self.controller = MaskRCNNAgent(
+                    self.env,
+                    self.traj_data,
+                    self.traj_root,
+                    pretrained_model=self.mask_rcnn,
+                    load_receps=load_receps,
+                    debug=debug,
+                    goal_desc_human_anns_prob=self.goal_desc_human_anns_prob,
+                    save_detections_to_disk=self.env.save_frames_to_disk,
+                    save_detections_path=self.env.save_frames_path,
+                )
+            elif self.controller_type == "mrcnn_astar":
+                self.controller = MaskRCNNAStarAgent(
+                    self.env,
+                    self.traj_data,
+                    self.traj_root,
+                    pretrained_model=self.mask_rcnn,
+                    load_receps=load_receps,
+                    debug=debug,
+                    goal_desc_human_anns_prob=self.goal_desc_human_anns_prob,
+                    save_detections_to_disk=self.env.save_frames_to_disk,
+                    save_detections_path=self.env.save_frames_path,
+                )
             else:
                 raise NotImplementedError()
 
@@ -167,7 +271,7 @@ class AlfredThorEnv(object):
                 if self.env.save_frames_to_disk:
                     self.record_action(action)
             self.steps += 1
-            
+
         def get_image(self):
             return self.env.last_event.frame
 
@@ -175,8 +279,8 @@ class AlfredThorEnv(object):
             return self._res
 
         def record_action(self, action):
-            txt_file = os.path.join(self.env.save_frames_path, 'action.txt')
-            with open(txt_file, 'a+') as f:
+            txt_file = os.path.join(self.env.save_frames_path, "action.txt")
+            with open(txt_file, "a+") as f:
                 f.write("%s\r\n" % str(action))
 
         def get_info(self):
@@ -188,16 +292,18 @@ class AlfredThorEnv(object):
             # expert action
             if self.train_eval == "train":
                 game_state = {
-                    'admissible_commands': acs,
-                    'feedback': self._feedback,
-                    'won': won
+                    "admissible_commands": acs,
+                    "feedback": self._feedback,
+                    "won": won,
                 }
                 expert_actions = ["look"]
                 try:
                     if not self.prev_command:
-                        self.expert.observe(game_state['feedback'])
+                        self.expert.observe(game_state["feedback"])
                     else:
-                        next_action = self.expert.act(game_state, 0, won, self.prev_command)
+                        next_action = self.expert.act(
+                            game_state, 0, won, self.prev_command
+                        )
                         if next_action in acs:
                             expert_actions = [next_action]
                 except HandCodedAgentTimeout:
@@ -210,16 +316,27 @@ class AlfredThorEnv(object):
 
             training_method = self.config["general"]["training_method"]
             if training_method == "dqn":
-                max_nb_steps_per_episode = self.config["rl"]["training"]["max_nb_steps_per_episode"]
+                max_nb_steps_per_episode = self.config["rl"]["training"][
+                    "max_nb_steps_per_episode"
+                ]
             elif training_method == "dagger":
-                max_nb_steps_per_episode = self.config["dagger"]["training"]["max_nb_steps_per_episode"]
+                max_nb_steps_per_episode = self.config["dagger"]["training"][
+                    "max_nb_steps_per_episode"
+                ]
             else:
                 raise NotImplementedError
             self._done = won or self.steps > max_nb_steps_per_episode
-            return (self._feedback, self._done, acs, won, goal_condition_success_rate, expert_actions)
+            return (
+                self._feedback,
+                self._done,
+                acs,
+                won,
+                goal_condition_success_rate,
+                expert_actions,
+            )
 
         def get_last_frame(self):
-            return self.env.last_event.frame[:,:,::-1]
+            return self.env.last_event.frame[:, :, ::-1]
 
         def get_exploration_frames(self):
             return self.controller.get_exploration_frames()
@@ -246,36 +363,38 @@ class AlfredThorEnv(object):
         self.json_file_list = []
 
         if self.train_eval == "train":
-            data_path = os.path.expandvars(self.config['dataset']['data_path'])
+            data_path = os.path.expandvars(self.config["dataset"]["data_path"])
         elif self.train_eval == "eval_in_distribution":
-            data_path = os.path.expandvars(self.config['dataset']['eval_id_data_path'])
+            data_path = os.path.expandvars(self.config["dataset"]["eval_id_data_path"])
         elif self.train_eval == "eval_out_of_distribution":
-            data_path = os.path.expandvars(self.config['dataset']['eval_ood_data_path'])
+            data_path = os.path.expandvars(self.config["dataset"]["eval_ood_data_path"])
         else:
             raise Exception("Invalid split. Must be either train or eval")
 
+        # print("THE DATA PTH IS:")
+        # print(data_path)
         # get task types
-        assert len(self.config['env']['task_types']) > 0
+        assert len(self.config["env"]["task_types"]) > 0
         task_types = []
-        for tt_id in self.config['env']['task_types']:
+        for tt_id in self.config["env"]["task_types"]:
             if tt_id in TASK_TYPES:
                 task_types.append(TASK_TYPES[tt_id])
         for root, dirs, files in os.walk(data_path, topdown=False):
-            if 'traj_data.json' in files:
+            if "traj_data.json" in files:
                 # Skip movable and slice objects object tasks
-                if 'movable' in root or 'Sliced' in root:
+                if "movable" in root or "Sliced" in root:
                     continue
 
                 # File paths
-                json_path = os.path.join(root, 'traj_data.json')
+                json_path = os.path.join(root, "traj_data.json")
                 game_file_path = os.path.join(root, "game.tw-pddl")
 
                 # Load trajectory file
-                with open(json_path, 'r') as f:
+                with open(json_path, "r") as f:
                     traj_data = json.load(f)
 
                 # Check for any task_type constraints
-                if not traj_data['task_type'] in task_types:
+                if not traj_data["task_type"] in task_types:
                     continue
 
                 self.json_file_list.append(json_path)
@@ -292,18 +411,28 @@ class AlfredThorEnv(object):
         self.num_games = len(self.json_file_list)
 
         if self.train_eval == "train":
-            num_train_games = self.config['dataset']['num_train_games'] if self.config['dataset']['num_train_games'] > 0 else len(self.json_file_list)
+            num_train_games = (
+                self.config["dataset"]["num_train_games"]
+                if self.config["dataset"]["num_train_games"] > 0
+                else len(self.json_file_list)
+            )
             self.json_file_list = self.json_file_list[:num_train_games]
             self.num_games = len(self.json_file_list)
             print("Training with %d games" % (len(self.json_file_list)))
         else:
-            num_eval_games = self.config['dataset']['num_eval_games'] if self.config['dataset']['num_eval_games'] > 0 else len(self.json_file_list)
+            num_eval_games = (
+                self.config["dataset"]["num_eval_games"]
+                if self.config["dataset"]["num_eval_games"] > 0
+                else len(self.json_file_list)
+            )
             self.json_file_list = self.json_file_list[:num_eval_games]
             self.num_games = len(self.json_file_list)
             print("Evaluating with %d games" % (len(self.json_file_list)))
 
     def init_env(self, batch_size):
         self.get_env_paths()
+        # print("Get get_env_paths")
+        # print(self.json_file_list)
         self.batch_size = batch_size
         self.action_queues = []
         self.task_order = [""] * self.batch_size
@@ -326,12 +455,19 @@ class AlfredThorEnv(object):
             if isinstance(tasks, str):
                 tasks = [tasks]
         else:
-            if self.train_eval == 'train':
+            if self.train_eval == "train":
                 tasks = random.sample(self.json_file_list, k=batch_size)
             else:
-                if len(self.json_file_list)-batch_size > batch_size:
-                    tasks = [self.json_file_list.pop(random.randrange(len(self.json_file_list))) for _ in range(batch_size)]
+                if len(self.json_file_list) - batch_size > batch_size:
+                    tasks = [
+                        self.json_file_list.pop(
+                            random.randrange(len(self.json_file_list))
+                        )
+                        for _ in range(batch_size)
+                    ]
                 else:
+                    # print("The json file size is : {}".format(len(self.json_file_list)))
+                    # print("the batch size is : {}".format(batch_size))
                     tasks = random.sample(self.json_file_list, k=batch_size)
                     self.get_env_paths()
         assert len(tasks) == batch_size
@@ -341,14 +477,14 @@ class AlfredThorEnv(object):
 
         obs, dones, infos = self.wait_and_get_info()
         return obs, infos
-    
+
     def get_image(self):
         return [env.get_image() for env in self.envs]
 
     def step(self, actions):
-        '''
+        """
         executes actions in parallel and waits for all env to finish
-        '''
+        """
         if isinstance(actions, str):
             actions = [actions]
         batch_size = self.batch_size
@@ -360,7 +496,15 @@ class AlfredThorEnv(object):
         return obs, None, dones, infos
 
     def wait_and_get_info(self):
-        obs, dones, admissible_commands, wons, gamefiles, expert_plans, gc_srs = [], [], [], [], [], [], []
+        obs, dones, admissible_commands, wons, gamefiles, expert_plans, gc_srs = (
+            [],
+            [],
+            [],
+            [],
+            [],
+            [],
+            [],
+        )
 
         # wait for all threads
         for n in range(self.batch_size):
@@ -374,12 +518,19 @@ class AlfredThorEnv(object):
             gamefiles.append(self.envs[n].traj_root)
             expert_plans.append(expert_actions)
 
-        infos = {'admissible_commands': admissible_commands,
-                 'won': wons,
-                 'goal_condition_success_rate': gc_srs,
-                 'extra.gamefile': gamefiles,
-                 'expert_plan': expert_plans}
+        infos = {
+            "admissible_commands": admissible_commands,
+            "won": wons,
+            "goal_condition_success_rate": gc_srs,
+            "extra.gamefile": gamefiles,
+            "expert_plan": expert_plans,
+        }
         return obs, dones, infos
+    
+    def set_visibility(self, setting):
+        for n in range(self.batch_size):
+            obs = self.envs[n].set_visibility(setting)
+        return obs
 
     def get_frames(self):
         images = []
@@ -387,6 +538,14 @@ class AlfredThorEnv(object):
             images.append(self.envs[n].get_last_frame())
         return np.array(images)
 
+    def step_rotate(self, action_degree):
+        for n in range(self.batch_size):
+            self.envs[n].step_rotate(action_degree)
+    
+    def step_to_original_rotation(self):
+        for n in range(self.batch_size):
+            self.envs[n].step_to_original_rotation()
+    
     def get_exploration_frames(self):
         images = []
         for n in range(self.batch_size):
