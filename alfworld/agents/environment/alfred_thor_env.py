@@ -88,7 +88,14 @@ class AlfredThorEnv(object):
             self.prev_command = ""
             self.load_mask_rcnn()
         
-
+        def get_objects_receps(self):
+            return self.controller.get_objects_receps()
+        
+        def get_instance_seg_and_id(self):
+            instance_segs = np.array(self.env.last_event.instance_segmentation_frame)
+            instance_detections2D = self.env.last_event.instance_detections2D
+            return instance_segs, instance_detections2D
+            
         def step_rotate(self, action_degree):
             
             def normalize_degree(rotation):
@@ -501,7 +508,7 @@ class AlfredThorEnv(object):
             [],
             [],
             [],
-            [],
+            [], 
             [],
             [],
         )
@@ -551,3 +558,20 @@ class AlfredThorEnv(object):
         for n in range(self.batch_size):
             images.append(self.envs[n].get_exploration_frames())
         return images
+    
+    def get_objects_receps(self):
+        objects_list = []
+        for n in range(self.batch_size):
+            objects_list.append(self.envs[n].get_objects_receps()) 
+        return objects_list
+    
+    def get_instance_seg_and_id(self):
+        instance_segs_list = []
+        instance_detections2D_list = []
+        for n in range(self.batch_size):
+            instance_segs, instance_detections2D = self.envs[n].get_instance_seg_and_id()
+            instance_segs_list.append(instance_segs)
+            instance_detections2D_list.append(instance_detections2D)
+        return instance_segs_list, instance_detections2D_list
+        
+    

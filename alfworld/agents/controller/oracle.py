@@ -334,3 +334,5 @@ class OracleAgent(BaseAgent):
             print(self.feedback)
         return self.feedback
 
+    def get_objects_receps(self):
+        return  {**self.receptacles, **self.objects}

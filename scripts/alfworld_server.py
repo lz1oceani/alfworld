@@ -150,6 +150,31 @@ async def get_frame(request: Request):
     release_semaphore()
     return ret_str
 
+@app.post("/get_objects_receps")
+async def get_objects_receps(request: Request):
+    global env
+
+    await acquire_worker_semaphore()
+
+    objects_receps = env.get_objects_receps()
+    ret_str = b64encode(dumps(objects_receps))
+
+    release_semaphore()
+    return ret_str
+
+@app.post("/get_instance_seg_and_id")
+async def get_instance_seg_and_id(request: Request):
+    global env
+
+    await acquire_worker_semaphore()
+
+    instance_segs_list, instance_detections2D_list = env.get_instance_seg_and_id()
+    ret = (instance_segs_list, instance_detections2D_list)
+    ret_str = b64encode(dumps(ret))
+
+    release_semaphore()
+    return ret_str
+
 @app.post("/set_visibility")
 async def set_visibility(request: Request):
     global env
@@ -161,7 +186,6 @@ async def set_visibility(request: Request):
     # print(obs)
     
     release_semaphore()
-    
 
 @app.post("/close")
 async def close(request: Request):
