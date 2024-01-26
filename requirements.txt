@@ -1,4 +1,6 @@
 numpy #==1.16.2
+torch
+torchvision
 pandas
 opencv-python==4.1.0.25
 networkx
