@@ -43,7 +43,7 @@ async def set_environment(request: Request):
     print(config_filename)
     with open(config_filename) as reader:
         config = yaml.safe_load(reader)
-    env_type = config['env']['type'] # 'AlfredTWEnv' or 'AlfredThorEnv' or 'AlfredHybrid'
+    env_type = config['env']['type']  # 'AlfredTWEnv' or 'AlfredThorEnv' or 'AlfredHybrid'
     print("Environment: {}".format(env_type))
     
     global env
