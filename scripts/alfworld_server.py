@@ -14,13 +14,12 @@ from pickle import loads, dumps
 from base64 import b64decode, b64encode
 import importlib
 
-
 __this_folder__ = Path(__file__).parent.absolute()
 app = FastAPI()
 worker_id = str(uuid.uuid4())[:8]
 semaphore = None
 visual_config = __this_folder__.parent / "configs/base_config_visual.yaml"
-#visual_config = __this_folder__.parent / "configs/eval_config_visual.yaml"
+# visual_config = __this_folder__.parent / "configs/eval_config_visual.yaml"
 text_config = __this_folder__.parent / "configs/base_config.yaml"
 configs = {"visual": visual_config, "text": text_config}
 env = None
@@ -81,7 +80,8 @@ async def reset(request: Request):
         ret_str = b64encode(dumps(ret))
         release_semaphore()
         return ret_str
-        
+
+
 @app.post("/step_rotate")
 async def step_rotate(request: Request):
     global env
@@ -92,8 +92,8 @@ async def step_rotate(request: Request):
     # print(params["action"])
     env.step_rotate(params["action"])
     release_semaphore()
-    
-    
+
+
 @app.post("/step_to_original_rotation")
 async def step_to_original_rotation(request: Request):
     global env
@@ -117,7 +117,7 @@ async def step(request: Request):
     obs, scores, dones, infos = env.step(params["action"])
     ret = (obs, scores, dones, infos)
     ret_str = b64encode(dumps(ret))
-    
+
     release_semaphore()
     return ret_str
 
@@ -134,9 +134,9 @@ async def restore_scene(request: Request):
         params["retore_args"]["object_toggles"],
         params["retore_args"]["dirty_and_empty"],
     )
-    
+
     release_semaphore()
-    
+
 
 @app.post("/get_frames")
 async def get_frame(request: Request):
@@ -150,6 +150,7 @@ async def get_frame(request: Request):
     release_semaphore()
     return ret_str
 
+
 @app.post("/get_objects_receps")
 async def get_objects_receps(request: Request):
     global env
@@ -161,6 +162,7 @@ async def get_objects_receps(request: Request):
 
     release_semaphore()
     return ret_str
+
 
 @app.post("/get_instance_seg_and_id")
 async def get_instance_seg_and_id(request: Request):
@@ -175,17 +177,19 @@ async def get_instance_seg_and_id(request: Request):
     release_semaphore()
     return ret_str
 
+
 @app.post("/set_visibility")
 async def set_visibility(request: Request):
     global env
-    
+
     params = await request.json()
     await acquire_worker_semaphore()
     # print(params["action"])
     obs = env.set_visibility(params["action"])
     # print(obs)
-    
+
     release_semaphore()
+
 
 @app.post("/close")
 async def close(request: Request):
@@ -202,10 +206,26 @@ if __name__ == "__main__":
     # print(env_type)
     # exit(0)
     # env.step(dict(action='Initialize', gridSize=0.5, fieldOfView='110', visibilityDistance='4'))
-    """
-    admissible_commands = infos['admissible_commands'][0]
-    print(obs[0])
-    print("Action", admissible_commands)
+    # """
+    # admissible_commands = infos['admissible_commands'][0]
+    # print(obs[0])
+    # print("Action", admissible_commands)
+    
+    config_filename = configs["visual"]
+
+    with open(config_filename) as reader:
+        config = yaml.safe_load(reader)
+    env_type = config["env"]["type"]  # 'AlfredTWEnv' or 'AlfredThorEnv' or 'AlfredHybrid'
+    env = getattr(environment, env_type)(config, train_eval="eval_out_of_distribution", headless=True)
+    
+    env = env.init_env(batch_size=2)
+    obs, infos = env.reset()
+    print(obs)
+    print(infos)
+    exit(0)
+    
+    admissible_commands = list(infos["admissible_commands"])
+    
     cnt = 0
     while True:
         frame = env.get_image()[0][..., ::-1]
@@ -235,13 +255,12 @@ if __name__ == "__main__":
     print(len(get_json_files(data_path)))
     exit(0)
 
-
     env.reset()
     embed()
     exit(0)
 
     # setup environment
-    env = getattr(environment, env_type)(config, train_eval='eval_out_of_distribution')
+    env = getattr(environment, env_type)(config, train_eval="eval_out_of_distribution")
     env = env.init_env(batch_size=1)
 
     # interact
@@ -249,11 +268,13 @@ if __name__ == "__main__":
     print(obs)
     while True:
         # get random actions from admissible 'valid' commands (not available for AlfredThorEnv)
-        admissible_commands = list(info['admissible_commands']) # note: BUTLER generates commands word-by-word without using admissible_commands
+        admissible_commands = list(
+            info["admissible_commands"]
+        )  # note: BUTLER generates commands word-by-word without using admissible_commands
         random_actions = [np.random.choice(admissible_commands[0])]
 
         # step
         obs, scores, dones, infos = env.step(random_actions)
         print("Action: {}, Obs: {}".format(random_actions[0], obs[0]))
 
-    """
+    # """
