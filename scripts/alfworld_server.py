@@ -1,4 +1,4 @@
-import numpy as np, yaml, os, cv2, asyncio, requests
+import numpy as np, yaml, os, cv2, asyncio, requests, json
 import sys
 
 sys.path.append("../")
@@ -13,6 +13,31 @@ import uuid, json
 from pickle import loads, dumps
 from base64 import b64decode, b64encode
 import importlib
+
+
+def is_json_file(filepath):
+    try:
+        with open(filepath, 'r') as f:
+            json.load(f)
+        return True
+    except ValueError:
+        return False
+    except FileNotFoundError:
+        print("File not found")
+        return False
+
+
+def get_json_files(data_path):
+    train_data_list = []
+    for filepath, dirnames, filenames in os.walk(data_path):
+        for filename in filenames:
+            json_path = os.path.join(filepath, filename)
+            if is_json_file(json_path):
+                train_data_list.append(json_path)
+            if len(train_data_list) == 200:
+                return train_data_list
+    return train_data_list
+
 
 __this_folder__ = Path(__file__).parent.absolute()
 app = FastAPI()
@@ -211,6 +236,15 @@ if __name__ == "__main__":
     # print(obs[0])
     # print("Action", admissible_commands)
     
+    ALFWORLD_FOLDER = Path("/root/alfworld")
+
+    jason_folder = ALFWORLD_FOLDER / "data/json_2.1.1/valid_unseen"
+    print(len(get_json_files(jason_folder)))
+
+    # env_url = "http://localhost:4001"
+    # print(requests.post(env_url + "/set_environment", json={"env_type": "visual"}).text)
+
+
     config_filename = configs["visual"]
 
     with open(config_filename) as reader:
@@ -218,7 +252,7 @@ if __name__ == "__main__":
     env_type = config["env"]["type"]  # 'AlfredTWEnv' or 'AlfredThorEnv' or 'AlfredHybrid'
     env = getattr(environment, env_type)(config, train_eval="eval_out_of_distribution", headless=True)
     
-    env = env.init_env(batch_size=2)
+    env = env.init_env(batch_size=1)
     obs, infos = env.reset()
     print(obs)
     print(infos)
