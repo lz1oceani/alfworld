@@ -82,7 +82,6 @@ class ThorEnv(Controller):
             renderObjectImage=render_object_image,
             visibility_distance=visibility_distance,
             makeAgentsVisible=False,
-            fieldOfView="110",
         ))
 
         # reset task if specified
@@ -115,7 +114,6 @@ class ThorEnv(Controller):
             renderClassImage=constants.RENDER_CLASS_IMAGE,
             renderObjectImage=constants.RENDER_OBJECT_IMAGE,
             visibility_distance=constants.VISIBILITY_DISTANCE,
-            fieldOfView=110,
             makeAgentsVisible=False,
         ))
         if len(object_toggles) > 0:
