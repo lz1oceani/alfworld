@@ -85,11 +85,8 @@ data_dict = OrderedDict()  # dictionary for storing trajectory data to be dumped
 # Unity Hyperparameters
 
 BUILD_PATH = None
-<<<<<<< Updated upstream
 X_DISPLAY = None
-=======
-X_DISPLAY = '1'
->>>>>>> Stashed changes
+X_DISPLAY = '0'
 
 AGENT_STEP_SIZE = 0.5
 AGENT_HORIZON_ADJ = 15
