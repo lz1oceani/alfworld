@@ -70,6 +70,8 @@ async def set_environment(request: Request):
     importlib.reload(alfworld)
     importlib.reload(alfworld.agents.environment)
     config_filename = configs[params["env_type"]]
+    batch_size = params["batch_size"]
+    print(f"Batch Size: {batch_size}")
 
     with open(config_filename) as reader:
         config = yaml.safe_load(reader)
@@ -80,7 +82,7 @@ async def set_environment(request: Request):
 
     global env
     env = getattr(environment, env_type)(config, train_eval="eval_out_of_distribution")
-    env = env.init_env(batch_size=1)
+    env = env.init_env(batch_size=batch_size)
 
     release_semaphore()
 
@@ -140,6 +142,7 @@ async def step(request: Request):
     await acquire_worker_semaphore()
 
     obs, scores, dones, infos = env.step(params["action"])
+
     ret = (obs, scores, dones, infos)
     ret_str = b64encode(dumps(ret))
 

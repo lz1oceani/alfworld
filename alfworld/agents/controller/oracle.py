@@ -167,7 +167,6 @@ class OracleAgent(BaseAgent):
 
         try:
             cmd = self.parse_command(action_str)
-
             if cmd['action'] == self.Action.GOTO:
                 target = cmd['tar']
                 recep = self.get_object(target, self.receptacles)
@@ -269,7 +268,7 @@ class OracleAgent(BaseAgent):
                 events.append(self.env.step({'action': 'Pass'}))
                 events.append(self.env.step({'action': 'ToggleObjectOff', 'objectId': faucet['objectId'], 'forceAction': True}))
                 events.append(self.env.step({'action': 'PickupObject', 'objectId': object['objectId'], 'forceAction': True}))
-
+            
                 if all(e.metadata['lastActionSuccess'] for e in events) and self.curr_recep == tar:
                     self.feedback = "You clean the %s using the %s." % (obj, tar)
 
@@ -326,13 +325,14 @@ class OracleAgent(BaseAgent):
         except:
             if self.debug:
                 print(traceback.format_exc())
-
+                    
         if event and not event.metadata['lastActionSuccess']:
             self.feedback = "Nothing happens."
-
+    
         if self.debug:
             print(self.feedback)
         return self.feedback
 
     def get_objects_receps(self):
-        return  {**self.receptacles, **self.objects}
+        combined = {**self.receptacles, **self.objects}
+        return combined
