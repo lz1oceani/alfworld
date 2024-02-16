@@ -185,6 +185,7 @@ class AlfredTWEnv(object):
             "pddl_domain": open(os.path.expandvars(self.config['logic']['domain'])).read(),
             "grammar": open(os.path.expandvars(self.config['logic']['grammar'])).read()
         }
+        
 
     # use expert to check the game is solvable
     def is_solvable(self, env, game_file_path,

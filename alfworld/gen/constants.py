@@ -85,13 +85,17 @@ data_dict = OrderedDict()  # dictionary for storing trajectory data to be dumped
 # Unity Hyperparameters
 
 BUILD_PATH = None
+<<<<<<< Updated upstream
 X_DISPLAY = None
+=======
+X_DISPLAY = '1'
+>>>>>>> Stashed changes
 
 AGENT_STEP_SIZE = 0.5
 AGENT_HORIZON_ADJ = 15
 AGENT_ROTATE_ADJ = 90
 CAMERA_HEIGHT_OFFSET = 0.75
-VISIBILITY_DISTANCE = 4
+VISIBILITY_DISTANCE = 1.5
 HORIZON_GRANULARITY = 15
 
 RENDER_IMAGE = True

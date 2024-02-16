@@ -33,7 +33,6 @@ class ThorEnv(Controller):
                  smooth_nav=False,
                  headless=False):
         
-        # env.step(dict(action='Initialize', gridSize=0.5, fieldOfView='110', visibilityDistance='4'))
 
         super().__init__(quality=quality, headless=headless)
         self.local_executable_path = build_path
@@ -116,6 +115,7 @@ class ThorEnv(Controller):
             renderClassImage=constants.RENDER_CLASS_IMAGE,
             renderObjectImage=constants.RENDER_OBJECT_IMAGE,
             visibility_distance=constants.VISIBILITY_DISTANCE,
+            fieldOfView=110,
             makeAgentsVisible=False,
         ))
         if len(object_toggles) > 0:

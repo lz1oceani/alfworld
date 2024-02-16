@@ -1,4 +1,4 @@
-FROM nvidia/cuda:9.0-cudnn7-devel-ubuntu16.04
+FROM gitlab-registry.nrp-nautilus.io/lz1oceani/docker:nlp_11.7
 
 ARG USER_NAME
 ARG USER_PASSWORD
@@ -6,51 +6,52 @@ ARG USER_ID
 ARG USER_GID
 
 RUN apt-get update
-RUN apt install sudo
+RUN apt install -y sudo
 RUN useradd -ms /bin/bash $USER_NAME --no-log-init
 RUN usermod -aG sudo $USER_NAME
-RUN yes $USER_PASSWORD | passwd $USER_NAME
+RUN echo "$USER_NAME:$USER_PASSWORD" | chpasswd
 
-# set uid and gid to match those outside the container
+# Set UID and GID to match those outside the container
 RUN usermod -u $USER_ID $USER_NAME
 RUN groupmod -g $USER_GID $USER_NAME
 
-# work directory
+# Work directory
 WORKDIR /home/$USER_NAME
 
-# install system dependencies
+# Install system dependencies
 COPY ./docker/install_deps.sh /tmp/install_deps.sh
 RUN yes "Y" | /tmp/install_deps.sh
 
 COPY ./docker/install_nvidia.sh /tmp/install_nvidia.sh
 RUN yes "Y" | /tmp/install_nvidia.sh
 
-# install python3.6 (required for fast-downward)
-RUN apt-get update && \
-  apt-get install -y software-properties-common && \
-  add-apt-repository ppa:deadsnakes/ppa
-RUN apt-get update
-RUN apt-get install -y python3.6 python3.6-dev python3-pip python3.6-venv
+# Install Miniconda
+RUN wget https://repo.anaconda.com/miniconda/Miniconda3-latest-Linux-x86_64.sh -O /miniconda.sh && \
+    bash /miniconda.sh -b -p /home/$USER_NAME/miniconda && \
+    rm /miniconda.sh
 
-# setup python environment
-RUN cd $WORKDIR
-ENV VIRTUAL_ENV=/home/$USER_NAME/alfworld_env
-RUN python3.6 -m virtualenv --python=/usr/bin/python3.6 $VIRTUAL_ENV
-ENV PATH="$VIRTUAL_ENV/bin:$PATH"
+ENV PATH="/home/$USER_NAME/miniconda/bin:${PATH}"
 
-# install python requirements
-RUN pip install --upgrade pip==19.3.1
-RUN pip install -U setuptools
+# Setup Python environment with Miniconda
+RUN conda create -n alfworld_env python=3.6
+ENV PATH="/home/$USER_NAME/miniconda/envs/alfworld_env/bin:${PATH}"
+ENV VIRTUAL_ENV="/home/$USER_NAME/miniconda/envs/alfworld_env"
+
+# Install Python requirements
 COPY ./requirements.txt /tmp/requirements.txt
-RUN pip install -r /tmp/requirements.txt
+RUN conda activate alfworld_env && \
+    pip install --upgrade pip==19.3.1 && \
+    pip install -U setuptools && \
+    pip install -r /tmp/requirements.txt
 
-# install GLX-Gears (for debugging)
+# Install GLX-Gears (for debugging)
 RUN apt-get update && apt-get install -y \
    mesa-utils && \
    rm -rf /var/lib/apt/lists/*
 
-# change ownership of everything to our user
+# Change ownership of everything to our user
 RUN mkdir /home/$USER_NAME/alfworld
-RUN cd ${USER_HOME_DIR} && echo $(pwd) && chown $USER_NAME:$USER_NAME -R .
+RUN chown $USER_NAME:$USER_NAME -R /home/$USER_NAME
 
+USER $USER_NAME
 ENTRYPOINT bash -c "export ALFRED_ROOT=~/alfworld && /bin/bash"
